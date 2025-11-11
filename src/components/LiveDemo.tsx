@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DatasetMode, config } from "@/config";
@@ -9,6 +10,7 @@ import {
   Languages,
   HelpCircle,
   Database,
+  BookOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import TranslatorDialog from "./TranslatorDialog";
@@ -29,6 +31,7 @@ interface LiveDemoProps {
 }
 
 const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
@@ -44,7 +47,6 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     const initialize = async () => {
       await initCamera();
       await loadModel();
-      startDetection();
     };
     
     initialize();
@@ -55,6 +57,17 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
       cleanupDetector();
     };
   }, [mode]);
+
+  useEffect(() => {
+    if (isDetectorReady && !isLoading) {
+      console.log("Starting detection loop...");
+      startDetection();
+    }
+    
+    return () => {
+      stopDetection();
+    };
+  }, [isDetectorReady, isLoading]);
 
   const initCamera = async () => {
     try {
@@ -121,36 +134,47 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   };
 
   const startDetection = () => {
+    console.log("Detection started, isDetectorReady:", isDetectorReady);
+    
     const detectFrame = async () => {
-      if (videoRef.current && canvasRef.current && isDetectorReady) {
-        try {
-          const hands = await detectHands(videoRef.current);
-          
-          // Draw hand landmarks on canvas
-          drawHandLandmarks(
-            canvasRef.current,
-            hands,
-            videoRef.current.videoWidth,
-            videoRef.current.videoHeight
-          );
+      if (!videoRef.current || !canvasRef.current) {
+        animationRef.current = requestAnimationFrame(detectFrame);
+        return;
+      }
 
-          // Process prediction
-          if (hands.length > 0) {
-            const features = extractLandmarkFeatures(hands);
-            if (features) {
-              // TODO: Pass features to trained model for prediction
-              // For now, use mock prediction based on mode
-              const mockPrediction = getMockPrediction(hands);
-              setPrediction(mockPrediction);
-              setConfidence(0.85); // Mock confidence
-            }
-          } else {
-            setPrediction("No hand detected");
-            setConfidence(0);
+      // Check if video is ready
+      if (videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
+        animationRef.current = requestAnimationFrame(detectFrame);
+        return;
+      }
+
+      try {
+        const hands = await detectHands(videoRef.current);
+        
+        // Draw hand landmarks on canvas
+        drawHandLandmarks(
+          canvasRef.current,
+          hands,
+          videoRef.current.videoWidth,
+          videoRef.current.videoHeight
+        );
+
+        // Process prediction
+        if (hands.length > 0) {
+          const features = extractLandmarkFeatures(hands);
+          if (features) {
+            // TODO: Pass features to trained model for prediction
+            // For now, use mock prediction based on mode
+            const mockPrediction = getMockPrediction(hands);
+            setPrediction(mockPrediction);
+            setConfidence(0.85); // Mock confidence
           }
-        } catch (error) {
-          console.error("Detection error:", error);
+        } else {
+          setPrediction("No hand detected");
+          setConfidence(0);
         }
+      } catch (error) {
+        console.error("Detection error:", error);
       }
       
       animationRef.current = requestAnimationFrame(detectFrame);
@@ -211,8 +235,6 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     }
   };
 
-  const vocabulary = config.models[mode].vocabulary;
-
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto">
@@ -226,6 +248,13 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
             {mode} Mode
           </h2>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/vocabulary", { state: { mode } })}
+            >
+              <BookOpen className="w-5 h-5 mr-2" />
+              View Vocabulary
+            </Button>
             <Button
               variant="outline"
               size="icon"
@@ -243,9 +272,9 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid gap-6">
           {/* Camera and Prediction */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-4">
             {/* Video Feed */}
             <Card className="relative overflow-hidden bg-card">
               <div className="aspect-video bg-muted flex items-center justify-center relative">
@@ -326,50 +355,18 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
             </Card>
           </div>
 
-          {/* Vocabulary Reference */}
-          <div className="space-y-4">
-            <Card className="p-6 bg-card">
-              <h3 className="text-xl font-bold text-foreground mb-4">
-                Vocabulary
-              </h3>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {mode === "alphabet" ? (
-                  <div className="grid grid-cols-5 gap-2">
-                    {vocabulary.map((letter) => (
-                      <div
-                        key={letter}
-                        className="aspect-square bg-muted rounded-lg flex items-center justify-center text-2xl font-bold text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
-                      >
-                        {letter}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <ul className="space-y-2">
-                    {vocabulary.map((item, index) => (
-                      <li
-                        key={index}
-                        className="px-4 py-3 bg-muted rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
-                      >
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </Card>
-
-            <Card className="p-6 bg-gentle-yellow">
-              <h3 className="text-lg font-bold text-warm-gray mb-2">
-                💡 Quick Tips
-              </h3>
-              <ul className="space-y-2 text-sm text-warm-gray">
-                <li>• Keep your hand clearly visible</li>
-                <li>• Position 1-2 feet from camera</li>
-                <li>• Good lighting helps accuracy</li>
-              </ul>
-            </Card>
-          </div>
+          {/* Quick Tips */}
+          <Card className="p-6 bg-gentle-yellow max-w-2xl">
+            <h3 className="text-lg font-bold text-warm-gray mb-2">
+              💡 Quick Tips
+            </h3>
+            <ul className="space-y-2 text-sm text-warm-gray">
+              <li>• Keep your hand clearly visible in the camera frame</li>
+              <li>• Position yourself 1-2 feet from the camera</li>
+              <li>• Good lighting helps improve detection accuracy</li>
+              <li>• Hold each gesture steady for best results</li>
+            </ul>
+          </Card>
         </div>
       </div>
 

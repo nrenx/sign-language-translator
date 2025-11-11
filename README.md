@@ -1,73 +1,371 @@
-# Welcome to your Lovable project
+# Simple Hands — Child-Friendly Hand Gesture Recognition
 
-## Project info
+A minimal, accessible website for real-time hand-gesture recognition. Built for children and learners to easily practice sign language alphabet, words, and phrases using webcam detection.
 
-**URL**: https://lovable.dev/projects/28d129ce-88f0-446a-9360-d840f81251c7
+## 🌟 Features
 
-## How can I edit this code?
+- **Three Dataset Modes:**
+  - **Alphabet (A-Z)**: Static letter gestures
+  - **Words**: Common word gestures with adjustable vocabulary
+  - **Full Sequences**: Dynamic phrase detection (advanced)
 
-There are several ways of editing your application.
+- **Real-Time Detection:**
+  - Client-side hand landmark extraction using MediaPipe
+  - Live prediction display with confidence scores
+  - Visual hand skeleton overlay on webcam feed
 
-**Use Lovable**
+- **Accessibility Tools:**
+  - Text-to-Speech (Web Speech API)
+  - Translation to 10+ languages
+  - Copy to clipboard functionality
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/28d129ce-88f0-446a-9360-d840f81251c7) and start prompting.
+- **Data Collection:**
+  - Record labeled gesture samples
+  - Export datasets for offline training
+  - Prepare for future model training
 
-Changes made via Lovable will be committed automatically to this repo.
+- **Privacy-First:**
+  - All processing happens in your browser
+  - No video data sent to servers
+  - Only hand landmarks are processed
 
-**Use your preferred IDE**
+## 🚀 Quick Start
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Prerequisites
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Node.js 16+ and npm
+- Modern web browser with webcam support
+- (Optional) GPU for faster inference
 
-Follow these steps:
+### Installation
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd simple-hands
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app will open at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Building for Production
 
-**Use GitHub Codespaces**
+```bash
+npm run build
+npm run preview
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🛠️ Configuration
 
-## What technologies are used for this project?
+Edit `src/config.ts` to customize:
 
-This project is built with:
+### Translation API
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```typescript
+translation: {
+  enabled: true,
+  apiEndpoint: "https://libretranslate.com/translate",
+  apiKey: "", // Add your API key
+  defaultSourceLanguage: "en",
+  defaultTargetLanguage: "es",
+}
+```
 
-## How can I deploy this project?
+### Model URLs
 
-Simply open [Lovable](https://lovable.dev/projects/28d129ce-88f0-446a-9360-d840f81251c7) and click on Share -> Publish.
+Replace placeholder model URLs with your trained TensorFlow.js models:
 
-## Can I connect a custom domain to my Lovable project?
+```typescript
+models: {
+  alphabet: {
+    url: "/models/alphabet/model.json", // Your model path
+    vocabulary: ["A", "B", "C", ...],
+    windowSize: 10,
+  },
+  // Similar for 'words' and 'sequences'
+}
+```
 
-Yes, you can!
+### MediaPipe Settings
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```typescript
+mediapipe: {
+  enabled: true,
+  modelComplexity: 1, // 0 = lite, 1 = full
+  maxNumHands: 1,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5,
+}
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## 🧠 Integrating Machine Learning
+
+### Option 1: MediaPipe Hands (Recommended for MVP)
+
+1. Install MediaPipe:
+```bash
+npm install @mediapipe/hands @mediapipe/camera_utils
+```
+
+2. Add to your component:
+```typescript
+import { Hands } from '@mediapipe/hands';
+import { Camera } from '@mediapipe/camera_utils';
+
+// Initialize MediaPipe
+const hands = new Hands({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+  },
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5,
+});
+
+hands.onResults((results) => {
+  // Process hand landmarks
+  if (results.multiHandLandmarks) {
+    const landmarks = results.multiHandLandmarks[0];
+    // Send landmarks to your model for classification
+  }
+});
+```
+
+### Option 2: TensorFlow.js Hand Pose
+
+1. Install TensorFlow.js:
+```bash
+npm install @tensorflow/tfjs @tensorflow-models/hand-pose-detection
+```
+
+2. Load and use:
+```typescript
+import * as tf from '@tensorflow/tfjs';
+import * as handpose from '@tensorflow-models/hand-pose-detection';
+
+const model = await handpose.createDetector(
+  handpose.SupportedModels.MediaPipeHands
+);
+
+const hands = await model.estimateHands(videoElement);
+```
+
+### Custom Model Integration
+
+1. **Train your model** (Python/TensorFlow):
+```python
+# Example training script structure
+import tensorflow as tf
+
+# Load your dataset
+# Define model architecture
+model = tf.keras.Sequential([...])
+
+# Train
+model.fit(X_train, y_train, epochs=50)
+
+# Convert to TensorFlow.js
+import tensorflowjs as tfjs
+tfjs.converters.save_keras_model(model, 'models/alphabet')
+```
+
+2. **Load in browser**:
+```typescript
+import * as tf from '@tensorflow/tfjs';
+
+const model = await tf.loadLayersModel('/models/alphabet/model.json');
+
+// Predict
+const prediction = model.predict(landmarksTensor);
+```
+
+## 📊 Recommended Datasets
+
+- **Sign Language MNIST**: Static letter gestures
+  - [Kaggle: Sign Language MNIST](https://www.kaggle.com/datamunge/sign-language-mnist)
+
+- **ASL Alphabet**: American Sign Language alphabet
+  - [Kaggle: ASL Alphabet](https://www.kaggle.com/grassknoted/asl-alphabet)
+
+- **HaGRID**: Hand Gesture Recognition Image Dataset
+  - [GitHub: HaGRID](https://github.com/hukenovs/hagrid)
+
+- **MS-ASL**: Microsoft American Sign Language (video sequences)
+  - [MS-ASL Dataset](https://www.microsoft.com/en-us/research/project/ms-asl/)
+
+- **EgoHands**: Egocentric hand detection
+  - [EgoHands Dataset](http://vision.soic.indiana.edu/projects/egohands/)
+
+## 🎓 Training Your Own Models
+
+### Step 1: Collect Data
+
+1. Use the "Data & Train" tab in the app
+2. Record samples for each gesture
+3. Export as JSON
+
+### Step 2: Train Offline
+
+```bash
+# Example training script (create your own)
+python train.py --dataset exported-data.json --mode alphabet
+```
+
+### Step 3: Convert to TensorFlow.js
+
+```bash
+tensorflowjs_converter \
+  --input_format=keras \
+  saved_model.h5 \
+  models/alphabet/
+```
+
+### Step 4: Update Config
+
+Update `src/config.ts` with your new model URL:
+```typescript
+models: {
+  alphabet: {
+    url: "/models/alphabet/model.json",
+  }
+}
+```
+
+## 🔧 Advanced Configuration
+
+### Enable Server-Side Training (Optional)
+
+1. Create backend API endpoints
+2. Update `src/config.ts`:
+```typescript
+training: {
+  enabled: true,
+  serverEndpoint: "https://your-api.com/train",
+  uploadEndpoint: "https://your-api.com/upload",
+}
+```
+
+3. Implement authentication for admin access
+
+### Custom Translation API
+
+Replace LibreTranslate with your preferred service:
+
+```typescript
+// In TranslatorDialog.tsx
+const response = await fetch("https://your-translation-api.com", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${YOUR_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    text: text,
+    target_lang: targetLanguage,
+  }),
+});
+```
+
+## 📁 Project Structure
+
+```
+simple-hands/
+├── src/
+│   ├── components/
+│   │   ├── LiveDemo.tsx        # Main detection interface
+│   │   ├── DataRecorder.tsx    # Dataset collection
+│   │   ├── TranslatorDialog.tsx
+│   │   └── HelpDialog.tsx
+│   ├── pages/
+│   │   └── Index.tsx           # Landing page
+│   ├── config.ts               # App configuration
+│   ├── index.css              # Design system
+│   └── main.tsx
+├── public/
+│   └── models/                 # Place your models here
+├── README.md
+└── package.json
+```
+
+## 🎨 Design System
+
+The app uses a soft, child-friendly color palette defined in `src/index.css`:
+
+- **Soft Blue**: Primary color and backgrounds
+- **Warm Gray**: Text and subtle elements
+- **Pastel Green**: Secondary accents
+- **Gentle Yellow**: Highlights and tips
+
+All colors use HSL format for consistency and accessibility.
+
+## 🐛 Troubleshooting
+
+### Camera not working
+
+- Check browser permissions
+- Try HTTPS (required for getUserMedia)
+- Test in different browsers
+
+### Model loading errors
+
+- Verify model files are in `public/models/`
+- Check browser console for CORS errors
+- Ensure model format is TensorFlow.js compatible
+
+### Poor detection accuracy
+
+- Improve lighting conditions
+- Use plain background
+- Adjust confidence thresholds in config
+- Train on more diverse data
+
+## 📝 Development Roadmap
+
+- [ ] Integrate real MediaPipe/TensorFlow.js detection
+- [ ] Train baseline models for each mode
+- [ ] Add temporal smoothing for predictions
+- [ ] Implement server-side training pipeline
+- [ ] Add user authentication (optional)
+- [ ] Support multiple languages in UI
+- [ ] Mobile app version (React Native)
+- [ ] Offline mode with service workers
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+MIT License - See LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- MediaPipe by Google for hand detection
+- TensorFlow.js team for browser ML
+- Sign language community for datasets and guidance
+- All contributors and testers
+
+## 📞 Support
+
+- Documentation: [docs/](docs/)
+- Issues: [GitHub Issues](your-repo/issues)
+- Discussions: [GitHub Discussions](your-repo/discussions)
+
+---
+
+Built with ❤️ for accessibility and learning

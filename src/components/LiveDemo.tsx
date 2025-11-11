@@ -13,6 +13,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import TranslatorDialog from "./TranslatorDialog";
 import HelpDialog from "./HelpDialog";
+import {
+  initHandDetector,
+  detectHands,
+  drawHandLandmarks,
+  extractLandmarkFeatures,
+  cleanupDetector,
+} from "@/utils/handDetection";
+import type { Hand } from "@tensorflow-models/hand-pose-detection";
 
 interface LiveDemoProps {
   mode: DatasetMode;
@@ -23,29 +31,49 @@ interface LiveDemoProps {
 const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
   const [prediction, setPrediction] = useState<string>("—");
   const [confidence, setConfidence] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDetectorReady, setIsDetectorReady] = useState(false);
   const [showTranslator, setShowTranslator] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    initCamera();
-    loadModel();
+    const initialize = async () => {
+      await initCamera();
+      await loadModel();
+      startDetection();
+    };
+    
+    initialize();
+    
     return () => {
       stopCamera();
+      stopDetection();
+      cleanupDetector();
     };
   }, [mode]);
 
   const initCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 },
+        video: { 
+          width: 640, 
+          height: 480,
+          facingMode: "user" // Front camera
+        },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
+        
+        // Set canvas size to match video
+        if (canvasRef.current && videoRef.current) {
+          canvasRef.current.width = videoRef.current.videoWidth;
+          canvasRef.current.height = videoRef.current.videoHeight;
+        }
       }
       setIsLoading(false);
     } catch (error) {
@@ -66,18 +94,90 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   };
 
   const loadModel = async () => {
-    // TODO: Load TensorFlow.js model based on mode
-    // This is a placeholder for the actual model loading
-    console.log(`Loading model for ${mode} mode...`);
-    console.log("Model config:", config.models[mode]);
-    
-    // Simulate model loading
-    setTimeout(() => {
+    try {
       toast({
-        title: "Model Loaded",
-        description: `${mode} recognition ready (using mock model)`,
+        title: "Loading Hand Detector",
+        description: "Initializing MediaPipe Hands...",
       });
-    }, 1000);
+      
+      await initHandDetector();
+      setIsDetectorReady(true);
+      
+      toast({
+        title: "Ready!",
+        description: `${mode} recognition active with hand tracking`,
+      });
+      
+      console.log(`Model loaded for ${mode} mode`);
+      console.log("Model config:", config.models[mode]);
+    } catch (error) {
+      console.error("Model loading error:", error);
+      toast({
+        title: "Model Error",
+        description: "Failed to load hand detection model",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const startDetection = () => {
+    const detectFrame = async () => {
+      if (videoRef.current && canvasRef.current && isDetectorReady) {
+        try {
+          const hands = await detectHands(videoRef.current);
+          
+          // Draw hand landmarks on canvas
+          drawHandLandmarks(
+            canvasRef.current,
+            hands,
+            videoRef.current.videoWidth,
+            videoRef.current.videoHeight
+          );
+
+          // Process prediction
+          if (hands.length > 0) {
+            const features = extractLandmarkFeatures(hands);
+            if (features) {
+              // TODO: Pass features to trained model for prediction
+              // For now, use mock prediction based on mode
+              const mockPrediction = getMockPrediction(hands);
+              setPrediction(mockPrediction);
+              setConfidence(0.85); // Mock confidence
+            }
+          } else {
+            setPrediction("No hand detected");
+            setConfidence(0);
+          }
+        } catch (error) {
+          console.error("Detection error:", error);
+        }
+      }
+      
+      animationRef.current = requestAnimationFrame(detectFrame);
+    };
+
+    detectFrame();
+  };
+
+  const stopDetection = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+  };
+
+  const getMockPrediction = (hands: Hand[]) => {
+    // Simple mock prediction based on hand position
+    // Replace this with actual model inference
+    const vocabulary = config.models[mode].vocabulary;
+    
+    if (hands[0]?.keypoints) {
+      // Use hand position to cycle through vocabulary (for demo)
+      const handY = hands[0].keypoints[0].y;
+      const index = Math.floor(handY / 50) % vocabulary.length;
+      return vocabulary[index];
+    }
+    
+    return vocabulary[0];
   };
 
   const handleSpeak = () => {
@@ -148,21 +248,28 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
           <div className="lg:col-span-2 space-y-4">
             {/* Video Feed */}
             <Card className="relative overflow-hidden bg-card">
-              <div className="aspect-video bg-muted flex items-center justify-center">
+              <div className="aspect-video bg-muted flex items-center justify-center relative">
                 <video
                   ref={videoRef}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover scale-x-[-1]"
                   playsInline
+                  style={{ transform: 'scaleX(-1)' }}
                 />
                 <canvas
                   ref={canvasRef}
-                  className="absolute top-0 left-0 w-full h-full"
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none scale-x-[-1]"
+                  style={{ transform: 'scaleX(-1)' }}
                 />
                 {isLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted/80">
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
                     <p className="text-lg text-muted-foreground">
-                      Initializing camera...
+                      Initializing camera and hand tracking...
                     </p>
+                  </div>
+                )}
+                {!isDetectorReady && !isLoading && (
+                  <div className="absolute top-4 right-4 bg-gentle-yellow text-warm-gray px-3 py-2 rounded-lg text-sm z-10">
+                    Loading hand detector...
                   </div>
                 )}
               </div>

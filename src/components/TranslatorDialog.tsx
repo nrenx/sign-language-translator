@@ -24,6 +24,20 @@ interface TranslatorDialogProps {
 }
 
 const LANGUAGES = [
+  // Indian Regional Languages
+  { code: "hi", name: "Hindi (हिंदी)" },
+  { code: "te", name: "Telugu (తెలుగు)" },
+  { code: "ta", name: "Tamil (தமிழ்)" },
+  { code: "mr", name: "Marathi (मराठी)" },
+  { code: "bn", name: "Bengali (বাংলা)" },
+  { code: "gu", name: "Gujarati (ગુજરાતી)" },
+  { code: "kn", name: "Kannada (ಕನ್ನಡ)" },
+  { code: "ml", name: "Malayalam (മലയാളം)" },
+  { code: "pa", name: "Punjabi (ਪੰਜਾਬੀ)" },
+  { code: "or", name: "Odia (ଓଡ଼ିଆ)" },
+  { code: "as", name: "Assamese (অসমীয়া)" },
+  { code: "ur", name: "Urdu (اردو)" },
+  // International Languages
   { code: "es", name: "Spanish" },
   { code: "fr", name: "French" },
   { code: "de", name: "German" },
@@ -43,6 +57,7 @@ const TranslatorDialog = ({
 }: TranslatorDialogProps) => {
   const [targetLanguage, setTargetLanguage] = useState("es");
   const [translatedText, setTranslatedText] = useState("");
+  const [meaningText, setMeaningText] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
   const { toast } = useToast();
 
@@ -56,57 +71,84 @@ const TranslatorDialog = ({
       return;
     }
 
+    if (!config.translation.apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please add your Google API key in config.ts",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsTranslating(true);
     try {
-      // Prepare request body for LibreTranslate
-      const requestBody: any = {
-        q: text,
-        source: config.translation.defaultSourceLanguage,
-        target: targetLanguage,
-        format: "text",
-      };
+      const targetLangName = LANGUAGES.find(l => l.code === targetLanguage)?.name || targetLanguage;
+      
+      const translationPrompt = `Translate the following text from English to ${targetLangName}. Only respond with the translation, nothing else:\n\n${text}`;
+      const meaningPrompt = `Provide a simple explanation of the meaning of "${text}" entirely in ${targetLangName} language only. Use simple words. Write 1-2 sentences. Do not use English at all, only ${targetLangName}.`;
 
-      // Only add API key if it's provided
-      if (config.translation.apiKey) {
-        requestBody.api_key = config.translation.apiKey;
-      }
-
-      const response = await fetch(config.translation.apiEndpoint, {
+      // Get translation
+      const translationResponse = await fetch(`${config.translation.apiEndpoint}?key=${config.translation.apiKey}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: translationPrompt
+            }]
+          }]
+        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      if (!translationResponse.ok) {
+        const errorData = await translationResponse.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${translationResponse.status}`);
       }
 
-      const data = await response.json();
-      
-      // LibreTranslate returns translatedText field
-      const translation = data.translatedText || data.translation || "";
+      const translationData = await translationResponse.json();
+      const translation = translationData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       
       if (!translation) {
         throw new Error("No translation returned from API");
       }
       
       setTranslatedText(translation);
+
+      // Get meaning in target language
+      const meaningResponse = await fetch(`${config.translation.apiEndpoint}?key=${config.translation.apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: meaningPrompt
+            }]
+          }]
+        }),
+      });
+
+      if (meaningResponse.ok) {
+        const meaningData = await meaningResponse.json();
+        const meaning = meaningData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (meaning) {
+          setMeaningText(meaning);
+        }
+      }
       
       toast({
         title: "Translated",
-        description: `Translated to ${LANGUAGES.find(l => l.code === targetLanguage)?.name}`,
+        description: `Translated to ${targetLangName}`,
       });
     } catch (error) {
       console.error("Translation error:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast({
         title: "Translation Failed",
-        description: errorMessage.includes("CORS") || errorMessage.includes("Failed to fetch")
-          ? "Network error. Try using a self-hosted LibreTranslate instance."
-          : errorMessage,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -193,6 +235,17 @@ const TranslatorDialog = ({
                   {translatedText}
                 </div>
               </div>
+
+              {meaningText && (
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Meaning
+                  </label>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg text-foreground text-sm">
+                    {meaningText}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button

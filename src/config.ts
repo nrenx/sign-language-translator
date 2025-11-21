@@ -72,12 +72,13 @@ const SIGN_LANGUAGE_ALPHABET = [
 export const config: AppConfig = {
   translation: {
     enabled: true,
-    // Using Argos Translate - free, no API key required, CORS-friendly
-    // Alternative: Get free API key from https://portal.libretranslate.com
-    apiEndpoint: "https://translate.argosopentech.com/translate",
-    apiKey: "", // No API key needed for Argos Translate
+    // Using Google Gemini 2.0 Flash Lite - Optimized for speed and efficiency
+    // Free tier: Higher rate limits, faster responses
+    // Get your API key from https://aistudio.google.com/app/apikey
+    apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent",
+    apiKey: "AIzaSyBu8PZKv2YCqEXa9u3asOYcS9hQgnt8pnk",
     defaultSourceLanguage: "en",
-    defaultTargetLanguage: "es",
+    defaultTargetLanguage: "hi", // Default to Hindi
   },
   models: {
     alphabet: {

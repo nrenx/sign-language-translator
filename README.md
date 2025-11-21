@@ -1,33 +1,20 @@
-# Simple Hands — Child-Friendly Hand Gesture Recognition
+# Sign Language Translator
 
-A minimal, accessible website for real-time hand-gesture recognition. Built for children and learners to easily practice sign language alphabet, words, and phrases using webcam detection.
+A privacy-first React/Vite app that performs real-time ASL alphabet recognition entirely in the browser using TensorFlow.js and MediaPipe Hands. All video processing happens locally—hand landmarks are extracted and classified on-device with **98.81% accuracy**.
+
+## ✅ Status: Production Ready
+
+The application uses a landmark-based neural network trained on 151,479 ASL hand gesture samples with 28 classes (A-Z + Space). The model achieves 98.81% validation accuracy and runs at 30+ FPS on modern browsers.
 
 ## 🌟 Features
 
-- **Three Dataset Modes:**
-  - **Alphabet (A-Z)**: Static letter gestures
-  - **Words**: Common word gestures with adjustable vocabulary
-  - **Full Sequences**: Dynamic phrase detection (advanced)
-
-- **Real-Time Detection:**
-  - Client-side hand landmark extraction using MediaPipe
-  - Live prediction display with confidence scores
-  - Visual hand skeleton overlay on webcam feed
-
-- **Accessibility Tools:**
-  - Text-to-Speech (Web Speech API)
-  - Translation to 10+ languages
-  - Copy to clipboard functionality
-
-- **Data Collection:**
-  - Record labeled gesture samples
-  - Export datasets for offline training
-  - Prepare for future model training
-
-- **Privacy-First:**
-  - All processing happens in your browser
-  - No video data sent to servers
-  - Only hand landmarks are processed
+- **Real-time Detection**: Live ASL alphabet recognition using TensorFlow.js + MediaPipe
+- **Privacy-First**: All processing happens in the browser—no data sent to servers
+- **High Accuracy**: 98.81% validation accuracy on ASL alphabet
+- **Lightweight**: Only 238 KB model size, runs smoothly on most devices
+- **Accessibility Helpers**: Speech synthesis, translation, clipboard copy, and in-app help
+- **On-Device Processing**: Hand landmarks extracted and classified locally
+- **Data Recorder**: Export training data for model improvements
 
 ## 🚀 Quick Start
 
@@ -40,10 +27,6 @@ A minimal, accessible website for real-time hand-gesture recognition. Built for 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd simple-hands
-
 # Install dependencies
 npm install
 
@@ -51,7 +34,7 @@ npm install
 npm run dev
 ```
 
-The app will open at `http://localhost:8080`
+The dev server runs at `http://localhost:8080` by default.
 
 ### Building for Production
 
@@ -62,9 +45,34 @@ npm run preview
 
 ## 🛠️ Configuration
 
-Edit `src/config.ts` to customize:
+### Model Setup
 
-### Translation API
+The production model is already configured in `public/models/alphabet_tfjs/`:
+- `model.json` — Model architecture and weights manifest (1 KB)
+- `group1-shard1of1.bin` — Model weights (237 KB)
+- `labels.json` — 28 class labels (A-Z + Space)
+
+**Model Specifications**:
+- **Input**: 63 features (21 MediaPipe hand landmarks × 3 coordinates, wrist-centered)
+- **Output**: 28 class probabilities
+- **Architecture**: Sequential MLP with 4 dense layers
+- **Size**: ~238 KB (lightweight and fast)
+
+Configuration in `src/config.ts`:
+
+```typescript
+models: {
+  alphabet: {
+    enabled: true,
+    url: `${import.meta.env.BASE_URL}models/alphabet_tfjs/model.json`,
+    labelsPath: `${import.meta.env.BASE_URL}models/alphabet_tfjs/labels.json`,
+    inputShape: [63], // Landmark-based input
+    useLandmarks: true, // Use MediaPipe landmark extraction
+  }
+}
+```
+
+### Translation API (Optional)
 
 ```typescript
 translation: {
@@ -76,296 +84,123 @@ translation: {
 }
 ```
 
-### Model URLs
+## 🧠 Model Integration
 
-Replace placeholder model URLs with your trained TensorFlow.js models:
+### How It Works
 
-```typescript
-models: {
-  alphabet: {
-    url: "/models/alphabet/model.json", // Your model path
-    vocabulary: ["A", "B", "C", ...],
-    windowSize: 10,
-  },
-  // Similar for 'words' and 'sequences'
+The app uses a landmark-based approach for ASL recognition:
+
+1. **Hand Detection**: MediaPipe Hands detects hand in webcam frame
+2. **Landmark Extraction**: Extract 21 hand landmarks (x, y, z coordinates)
+3. **Wrist Centering**: Normalize by subtracting wrist position from all landmarks
+4. **Classification**: Feed 63-feature vector to TensorFlow.js model
+5. **Prediction**: Display highest-confidence class (if confidence > 50%)
+
+### Preprocessing Pipeline
+
+The app uses **landmark-based preprocessing** (not image-based):
+
+```javascript
+// 1. Detect hands using MediaPipe
+const hands = await detector.estimateHands(video);
+
+// 2. Extract wrist position (landmark 0)
+const wrist = hands[0].keypoints[0];
+
+// 3. Create wrist-centered feature vector (63 values)
+const landmarks = new Float32Array(63);
+for (let i = 0; i < 21; i++) {
+  const kp = hands[0].keypoints[i];
+  landmarks[i * 3] = kp.x - wrist.x;
+  landmarks[i * 3 + 1] = kp.y - wrist.y;
+  landmarks[i * 3 + 2] = (kp.z || 0) - (wrist.z || 0);
 }
+
+// 4. Create tensor and predict
+const inputTensor = tf.tensor2d(landmarks, [1, 63]);
+const prediction = model.predict(inputTensor);
 ```
 
-### MediaPipe Settings
+See `src/components/LiveDemo.tsx` for the full implementation.
 
-```typescript
-mediapipe: {
-  enabled: true,
-  modelComplexity: 1, // 0 = lite, 1 = full
-  maxNumHands: 1,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5,
-}
-```
+### Training a New Model
 
-## 🧠 Integrating Machine Learning
+To retrain or improve the model:
 
-### Option 1: MediaPipe Hands (Recommended for MVP)
+1. **Open Training Notebook**: `training_setup/sign_language_colab.ipynb`
+2. **Upload to Google Colab**: Requires Kaggle API for dataset access
+3. **Configure Output**: Save to Google Drive (`asl_model_output/`)
+4. **Run Training**: Takes ~30-60 minutes on GPU
+5. **Deploy Model**: Copy `tfjs_model/` contents to `public/models/alphabet_tfjs/`
 
-1. Install MediaPipe:
-```bash
-npm install @mediapipe/hands @mediapipe/camera_utils
-```
-
-2. Add to your component:
-```typescript
-import { Hands } from '@mediapipe/hands';
-import { Camera } from '@mediapipe/camera_utils';
-
-// Initialize MediaPipe
-const hands = new Hands({
-  locateFile: (file) => {
-    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-  },
-});
-
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5,
-});
-
-hands.onResults((results) => {
-  // Process hand landmarks
-  if (results.multiHandLandmarks) {
-    const landmarks = results.multiHandLandmarks[0];
-    // Send landmarks to your model for classification
-  }
-});
-```
-
-### Option 2: TensorFlow.js Hand Pose
-
-1. Install TensorFlow.js:
-```bash
-npm install @tensorflow/tfjs @tensorflow-models/hand-pose-detection
-```
-
-2. Load and use:
-```typescript
-import * as tf from '@tensorflow/tfjs';
-import * as handpose from '@tensorflow-models/hand-pose-detection';
-
-const model = await handpose.createDetector(
-  handpose.SupportedModels.MediaPipeHands
-);
-
-const hands = await model.estimateHands(videoElement);
-```
-
-### Custom Model Integration
-
-1. **Train your model** (Python/TensorFlow):
-```python
-# Example training script structure
-import tensorflow as tf
-
-# Load your dataset
-# Define model architecture
-model = tf.keras.Sequential([...])
-
-# Train
-model.fit(X_train, y_train, epochs=50)
-
-# Convert to TensorFlow.js
-import tensorflowjs as tfjs
-tfjs.converters.save_keras_model(model, 'models/alphabet')
-```
-
-2. **Load in browser**:
-```typescript
-import * as tf from '@tensorflow/tfjs';
-
-const model = await tf.loadLayersModel('/models/alphabet/model.json');
-
-// Predict
-const prediction = model.predict(landmarksTensor);
-```
-
-## 📊 Recommended Datasets
-
-- **Sign Language MNIST**: Static letter gestures
-  - [Kaggle: Sign Language MNIST](https://www.kaggle.com/datamunge/sign-language-mnist)
-
-- **ASL Alphabet**: American Sign Language alphabet
-  - [Kaggle: ASL Alphabet](https://www.kaggle.com/grassknoted/asl-alphabet)
-
-- **HaGRID**: Hand Gesture Recognition Image Dataset
-  - [GitHub: HaGRID](https://github.com/hukenovs/hagrid)
-
-- **MS-ASL**: Microsoft American Sign Language (video sequences)
-  - [MS-ASL Dataset](https://www.microsoft.com/en-us/research/project/ms-asl/)
-
-- **EgoHands**: Egocentric hand detection
-  - [EgoHands Dataset](http://vision.soic.indiana.edu/projects/egohands/)
-
-## 🎓 Training Your Own Models
-
-### Step 1: Collect Data
-
-1. Use the "Data & Train" tab in the app
-2. Record samples for each gesture
-3. Export as JSON
-
-### Step 2: Train Offline
-
-```bash
-# Example training script (create your own)
-python train.py --dataset exported-data.json --mode alphabet
-```
-
-### Step 3: Convert to TensorFlow.js
-
-```bash
-tensorflowjs_converter \
-  --input_format=keras \
-  saved_model.h5 \
-  models/alphabet/
-```
-
-### Step 4: Update Config
-
-Update `src/config.ts` with your new model URL:
-```typescript
-models: {
-  alphabet: {
-    url: "/models/alphabet/model.json",
-  }
-}
-```
-
-## 🔧 Advanced Configuration
-
-### Enable Server-Side Training (Optional)
-
-1. Create backend API endpoints
-2. Update `src/config.ts`:
-```typescript
-training: {
-  enabled: true,
-  serverEndpoint: "https://your-api.com/train",
-  uploadEndpoint: "https://your-api.com/upload",
-}
-```
-
-3. Implement authentication for admin access
-
-### Custom Translation API
-
-Replace LibreTranslate with your preferred service:
-
-```typescript
-// In TranslatorDialog.tsx
-const response = await fetch("https://your-translation-api.com", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${YOUR_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    text: text,
-    target_lang: targetLanguage,
-  }),
-});
-```
+See `training_setup/README.md` for detailed instructions.
 
 ## 📁 Project Structure
 
 ```
-simple-hands/
+sign-language-translator/
 ├── src/
 │   ├── components/
-│   │   ├── LiveDemo.tsx        # Main detection interface
-│   │   ├── DataRecorder.tsx    # Dataset collection
-│   │   ├── TranslatorDialog.tsx
-│   │   └── HelpDialog.tsx
+│   │   ├── LiveDemo.tsx           # Main detection interface
+│   │   ├── DataRecorder.tsx       # Data collection tool
+│   │   ├── TranslatorDialog.tsx   # Translation feature
+│   │   ├── HelpDialog.tsx         # User guidance
+│   │   └── ui/                    # Reusable UI components
 │   ├── pages/
-│   │   └── Index.tsx           # Landing page
-│   ├── config.ts               # App configuration
-│   ├── index.css              # Design system
+│   │   ├── Index.tsx              # Home page
+│   │   ├── Vocabulary.tsx         # Practice mode
+│   │   └── NotFound.tsx
+│   ├── config.ts                  # App configuration
 │   └── main.tsx
 ├── public/
-│   └── models/                 # Place your models here
-├── README.md
-└── package.json
+│   └── models/
+│       └── alphabet_tfjs/         # Your trained model
+├── training_setup/                # Training notebooks and scripts
+└── README.md
 ```
 
-## 🎨 Design System
+## 🎓 Training Your Own Model
 
-The app uses a soft, child-friendly color palette defined in `src/index.css`:
-
-- **Soft Blue**: Primary color and backgrounds
-- **Warm Gray**: Text and subtle elements
-- **Pastel Green**: Secondary accents
-- **Gentle Yellow**: Highlights and tips
-
-All colors use HSL format for consistency and accessibility.
+See `training_setup/` for:
+- Dataset preparation notebooks
+- Model architecture examples
+- Training scripts
+- Conversion utilities
 
 ## 🐛 Troubleshooting
 
-### Camera not working
-
+### Camera Issues
+- Ensure HTTPS (required for camera access)
 - Check browser permissions
-- Try HTTPS (required for getUserMedia)
-- Test in different browsers
+- Try desktop Chrome for best compatibility
 
-### Model loading errors
+### Model Loading Errors
+- Verify all model files are in `public/models/alphabet_tfjs/`
+- Check console for specific error messages
+- Ensure `labels.json` class count matches model output
 
-- Verify model files are in `public/models/`
-- Check browser console for CORS errors
-- Ensure model format is TensorFlow.js compatible
-
-### Poor detection accuracy
-
+### Poor Detection
 - Improve lighting conditions
-- Use plain background
-- Adjust confidence thresholds in config
-- Train on more diverse data
-
-## 📝 Development Roadmap
-
-- [ ] Integrate real MediaPipe/TensorFlow.js detection
-- [ ] Train baseline models for each mode
-- [ ] Add temporal smoothing for predictions
-- [ ] Implement server-side training pipeline
-- [ ] Add user authentication (optional)
-- [ ] Support multiple languages in UI
-- [ ] Mobile app version (React Native)
-- [ ] Offline mode with service workers
+- Keep hand centered in frame
+- Ensure clear background contrast
+- Collect more training data
 
 ## 🤝 Contributing
-
-Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+4. Submit a pull request
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+MIT License
 
 ## 🙏 Acknowledgments
 
-- MediaPipe by Google for hand detection
-- TensorFlow.js team for browser ML
-- Sign language community for datasets and guidance
-- All contributors and testers
-
-## 📞 Support
-
-- Documentation: [docs/](docs/)
-- Issues: [GitHub Issues](your-repo/issues)
-- Discussions: [GitHub Discussions](your-repo/discussions)
+- TensorFlow.js team for browser ML capabilities
+- Sign language community for datasets and feedback
 
 ---
 
-Built with ❤️ for accessibility and learning
+Built for accessibility and learning

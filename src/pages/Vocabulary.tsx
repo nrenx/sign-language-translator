@@ -7,7 +7,12 @@ import { config, DatasetMode } from "@/config";
 const Vocabulary = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const mode = (location.state?.mode as DatasetMode) || "alphabet";
+  const requestedMode = (location.state?.mode as DatasetMode) || "alphabet";
+  const isRequestedLocked = (
+    requestedMode !== "alphabet" &&
+    (config.models[requestedMode] === undefined || !config.models[requestedMode].enabled)
+  );
+  const mode: DatasetMode = isRequestedLocked ? "alphabet" : requestedMode;
   const vocabulary = config.models[mode].vocabulary;
 
   const getModeIcon = () => {
@@ -52,6 +57,11 @@ const Vocabulary = () => {
         </div>
 
         <Card className="p-8 bg-card">
+          {isRequestedLocked && (
+            <div className="mb-4 rounded-lg border border-dashed border-muted-foreground/40 bg-muted/40 p-4 text-sm text-muted-foreground">
+              Words and sentence vocabularies are locked until their production models ship. Showing the alphabet list instead.
+            </div>
+          )}
           <div className="mb-6">
             <p className="text-lg text-muted-foreground">
               {mode === "alphabet" && "All letters in the sign language alphabet"}

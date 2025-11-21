@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Python virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# Temporary and cache files
+*.tmp
+*.cache
+.cache/

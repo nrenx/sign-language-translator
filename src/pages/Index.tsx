@@ -1,16 +1,59 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Hand, BookOpen, MessageSquare, HelpCircle } from "lucide-react";
-import { DatasetMode } from "@/config";
+import { Hand, BookOpen, MessageSquare, HelpCircle, Lock } from "lucide-react";
+import { DatasetMode, config } from "@/config";
 import LiveDemo from "@/components/LiveDemo";
 import DataRecorder from "@/components/DataRecorder";
 import HelpDialog from "@/components/HelpDialog";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [selectedMode, setSelectedMode] = useState<DatasetMode | null>(null);
   const [showDataRecorder, setShowDataRecorder] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const { toast } = useToast();
+
+  const modeCards: Array<{
+    mode: DatasetMode;
+    title: string;
+    description: string;
+    accent: string;
+    icon: JSX.Element;
+  }> = [
+    {
+      mode: "alphabet",
+      title: "Alphabet (A–Y)",
+      description: "Realtime inference with our production model",
+      accent: "bg-primary/10",
+      icon: <BookOpen className="w-8 h-8 text-primary" />,
+    },
+    {
+      mode: "words",
+      title: "Words",
+      description: "Coming soon — locked until new dataset ships",
+      accent: "bg-secondary/30",
+      icon: <Hand className="w-8 h-8 text-accent-foreground" />,
+    },
+    {
+      mode: "sequences",
+      title: "Full Sequences",
+      description: "Future roadmap for short phrases",
+      accent: "bg-gentle-yellow",
+      icon: <MessageSquare className="w-8 h-8 text-warm-gray" />,
+    },
+  ];
+
+  const handleModeSelect = (mode: DatasetMode) => {
+    if (!config.models[mode].enabled) {
+      toast({
+        title: "Mode Locked",
+        description: "Only the alphabet model is live right now",
+      });
+      return;
+    }
+    setSelectedMode(mode);
+  };
 
   if (showDataRecorder) {
     return (
@@ -53,56 +96,36 @@ const Index = () => {
 
         {/* Dataset Mode Selection */}
         <div className="grid md:grid-cols-3 gap-6 mb-12">
-          <Card
-            className="p-8 cursor-pointer hover:shadow-lg transition-all hover:scale-105 bg-card border-2 border-border"
-            onClick={() => setSelectedMode("alphabet")}
-          >
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <BookOpen className="w-8 h-8 text-primary" />
-              </div>
-              <h3 className="text-2xl font-bold text-foreground">
-                Alphabet (A–Z)
-              </h3>
-              <p className="text-muted-foreground text-lg">
-                Learn and practice static letter gestures
-              </p>
-            </div>
-          </Card>
-
-          <Card
-            className="p-8 cursor-pointer hover:shadow-lg transition-all hover:scale-105 bg-card border-2 border-border"
-            onClick={() => setSelectedMode("words")}
-          >
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-secondary/30 flex items-center justify-center">
-                <Hand className="w-8 h-8 text-accent-foreground" />
-              </div>
-              <h3 className="text-2xl font-bold text-foreground">
-                Words
-              </h3>
-              <p className="text-muted-foreground text-lg">
-                Recognize common word gestures
-              </p>
-            </div>
-          </Card>
-
-          <Card
-            className="p-8 cursor-pointer hover:shadow-lg transition-all hover:scale-105 bg-card border-2 border-border"
-            onClick={() => setSelectedMode("sequences")}
-          >
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gentle-yellow flex items-center justify-center">
-                <MessageSquare className="w-8 h-8 text-warm-gray" />
-              </div>
-              <h3 className="text-2xl font-bold text-foreground">
-                Full Sequences
-              </h3>
-              <p className="text-muted-foreground text-lg">
-                Advanced: Detect short phrases
-              </p>
-            </div>
-          </Card>
+          {modeCards.map(({ mode, title, description, accent, icon }) => {
+            const isLocked = !config.models[mode].enabled;
+            return (
+              <Card
+                key={mode}
+                className={`relative p-8 bg-card border-2 border-border transition-all ${
+                  isLocked ? "opacity-70" : "cursor-pointer hover:shadow-lg hover:scale-105"
+                }`}
+                onClick={() => handleModeSelect(mode)}
+              >
+                <div className="flex flex-col items-center text-center gap-4">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center ${accent}`}>
+                    {icon}
+                  </div>
+                  <h3 className="text-2xl font-bold text-foreground capitalize">
+                    {title}
+                  </h3>
+                  <p className="text-muted-foreground text-lg">
+                    {description}
+                  </p>
+                </div>
+                {isLocked && (
+                  <div className="absolute top-4 right-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Lock className="w-4 h-4" />
+                    Locked
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
 
         {/* Action Buttons */}
@@ -129,8 +152,8 @@ const Index = () => {
         {/* Footer */}
         <footer className="mt-16 text-center text-muted-foreground">
           <p className="text-sm">
-            Privacy First: Your video never leaves your device. Only hand
-            landmarks are processed.
+            Privacy First: Your video never leaves your device. Only 28×28 grayscale snapshots
+            are processed locally for predictions.
           </p>
           <p className="text-xs mt-2">
             Built with ❤️ for accessibility | Open Source

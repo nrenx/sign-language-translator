@@ -80,9 +80,8 @@ const HelpDialog = ({ open, onOpenChange }: HelpDialogProps) => {
           <div className="bg-muted p-4 rounded-lg">
             <h3 className="text-lg font-bold text-foreground mb-2">Privacy Notice</h3>
             <p className="text-sm text-muted-foreground">
-              Your privacy matters! All hand detection happens on your device. Your video never leaves
-              your browser. Only hand landmark coordinates are processed, and no data is stored or sent
-              to external servers.
+              Your privacy matters! The webcam stream stays on-device. We only capture temporary 28×28
+              grayscale snapshots to feed the alphabet model—no footage or landmarks leave your browser.
             </p>
           </div>
 

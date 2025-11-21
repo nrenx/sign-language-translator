@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Video, Square, Download, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { config } from "@/config";
+import { config, type DatasetMode } from "@/config";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface DataRecorderProps {
@@ -18,7 +18,7 @@ interface RecordedSample {
 }
 
 const DataRecorder = ({ onBack }: DataRecorderProps) => {
-  const [selectedDataset, setSelectedDataset] = useState<string>("alphabet");
+  const [selectedDataset, setSelectedDataset] = useState<DatasetMode>("alphabet");
   const [selectedLabel, setSelectedLabel] = useState<string>("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordedSamples, setRecordedSamples] = useState<RecordedSample[]>([]);
@@ -59,8 +59,7 @@ const DataRecorder = ({ onBack }: DataRecorderProps) => {
   };
 
   const getVocabulary = () => {
-    const mode = selectedDataset as keyof typeof config.models;
-    return config.models[mode]?.vocabulary || [];
+    return config.models[selectedDataset]?.vocabulary || [];
   };
 
   const startRecording = () => {
@@ -68,6 +67,15 @@ const DataRecorder = ({ onBack }: DataRecorderProps) => {
       toast({
         title: "Select a Label",
         description: "Please choose what gesture you want to record",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!config.models[selectedDataset].enabled) {
+      toast({
+        title: "Dataset Locked",
+        description: "Recording is currently available for alphabet mode only",
         variant: "destructive",
       });
       return;
@@ -164,15 +172,19 @@ const DataRecorder = ({ onBack }: DataRecorderProps) => {
                   </label>
                   <Select
                     value={selectedDataset}
-                    onValueChange={setSelectedDataset}
+                    onValueChange={(value) => setSelectedDataset(value as DatasetMode)}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="alphabet">Alphabet (A-Z)</SelectItem>
-                      <SelectItem value="words">Words</SelectItem>
-                      <SelectItem value="sequences">Full Sequences</SelectItem>
+                      <SelectItem value="alphabet">Alphabet (A–Y)</SelectItem>
+                      <SelectItem value="words" disabled>
+                        Words (Locked)
+                      </SelectItem>
+                      <SelectItem value="sequences" disabled>
+                        Full Sequences (Locked)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

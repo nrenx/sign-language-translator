@@ -58,8 +58,6 @@ const TranslatorDialog = ({
 
     setIsTranslating(true);
     try {
-      // TODO: Replace with actual translation API call
-      // This is a placeholder implementation
       const response = await fetch(config.translation.apiEndpoint, {
         method: "POST",
         headers: {
@@ -79,7 +77,7 @@ const TranslatorDialog = ({
       }
 
       const data = await response.json();
-      setTranslatedText(data.translatedText || data.translation || "Translation not available");
+      setTranslatedText(data.translatedText || data.translation);
       
       toast({
         title: "Translated",
@@ -87,11 +85,10 @@ const TranslatorDialog = ({
       });
     } catch (error) {
       console.error("Translation error:", error);
-      // Fallback: Show placeholder message
-      setTranslatedText(`[Translation to ${targetLanguage}: ${text}]`);
       toast({
-        title: "Using Mock Translation",
-        description: "Configure translation API for real translations",
+        title: "Translation Failed",
+        description: "Please check your translation API configuration",
+        variant: "destructive",
       });
     } finally {
       setIsTranslating(false);

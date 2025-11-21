@@ -14,6 +14,9 @@ import {
   HelpCircle,
   Database,
   BookOpen,
+  Delete,
+  Space,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import TranslatorDialog from "./TranslatorDialog";
@@ -35,6 +38,8 @@ interface LiveDemoProps {
 }
 
 const MIN_CONFIDENCE = 0.5;
+const LETTER_HOLD_DURATION = 3000; // 3 seconds - how long to hold gesture to capture
+const RECAPTURE_COOLDOWN = 500; // 0.5 seconds - cooldown after capturing before same letter can be captured again
 
 const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const navigate = useNavigate();
@@ -53,6 +58,14 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const [showTranslator, setShowTranslator] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const { toast } = useToast();
+  
+  // Sentence building state
+  const [capturedSentence, setCapturedSentence] = useState<string>("");
+  const [holdProgress, setHoldProgress] = useState<number>(0); // Progress of holding current letter (0-100)
+  const currentHoldLetterRef = useRef<string>("");
+  const holdStartTimeRef = useRef<number>(0);
+  const lastCapturedLetterRef = useRef<string>("");
+  const lastCaptureTimeRef = useRef<number>(0);
   const isModeEnabled = config.models[mode].enabled;
   const useLandmarks = config.models[mode].useLandmarks ?? false;
   const inputShape = config.models[mode].inputShape ?? [28, 28, 1];
@@ -387,8 +400,12 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
         setConfidence(score);
         if (score >= MIN_CONFIDENCE) {
           setPrediction(label);
+          // Track letter hold time for sentence building
+          updateLetterHold(label);
         } else {
           setPrediction("—");
+          // Reset hold tracking when no confident prediction
+          resetLetterHold();
         }
       } catch (error) {
         console.error("Inference error:", error);
@@ -402,6 +419,79 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
 
     detectFrame();
   }, [computeCropBox, getTopPrediction, preprocessFrame, preprocessLandmarks, useLandmarks]);
+
+  // Sentence building functions - track how long a letter is held
+  const updateLetterHold = useCallback((letter: string) => {
+    const now = Date.now();
+    
+    // If this is a new letter (different from what we're currently holding)
+    if (letter !== currentHoldLetterRef.current) {
+      currentHoldLetterRef.current = letter;
+      holdStartTimeRef.current = now;
+      setHoldProgress(0);
+      return;
+    }
+    
+    // Calculate how long we've been holding this letter
+    const holdDuration = now - holdStartTimeRef.current;
+    const progress = Math.min((holdDuration / LETTER_HOLD_DURATION) * 100, 100);
+    setHoldProgress(progress);
+    
+    // Check if we've held for 3 seconds
+    if (holdDuration >= LETTER_HOLD_DURATION) {
+      // Allow re-capture of same letter after cooldown period
+      const timeSinceLastCapture = now - lastCaptureTimeRef.current;
+      const canCaptureSameLetter = letter !== lastCapturedLetterRef.current || timeSinceLastCapture >= RECAPTURE_COOLDOWN;
+      
+      if (canCaptureSameLetter) {
+        captureLetter(letter);
+        lastCapturedLetterRef.current = letter;
+        lastCaptureTimeRef.current = now;
+        // Reset to prevent immediate re-capture
+        currentHoldLetterRef.current = "";
+        holdStartTimeRef.current = 0;
+        setHoldProgress(0);
+      }
+    }
+  }, []);
+
+  const resetLetterHold = useCallback(() => {
+    currentHoldLetterRef.current = "";
+    holdStartTimeRef.current = 0;
+    setHoldProgress(0);
+  }, []);
+
+  const captureLetter = useCallback((letter: string) => {
+    setCapturedSentence(prev => prev + letter);
+    
+    toast({
+      title: "Letter Captured! ✓",
+      description: `Added "${letter}" to sentence`,
+    });
+  }, [toast]);
+
+  const handleAddSpace = () => {
+    setCapturedSentence(prev => prev + " ");
+    lastCapturedLetterRef.current = " "; // Prevent immediate re-capture of same letter
+  };
+
+  const handleDeleteLast = () => {
+    setCapturedSentence(prev => prev.slice(0, -1));
+    lastCapturedLetterRef.current = ""; // Allow capturing same letter again
+  };
+
+  const handleClearSentence = () => {
+    setCapturedSentence("");
+    lastCapturedLetterRef.current = "";
+    lastCaptureTimeRef.current = 0;
+    currentHoldLetterRef.current = "";
+    holdStartTimeRef.current = 0;
+    setHoldProgress(0);
+    toast({
+      title: "Cleared",
+      description: "Sentence cleared",
+    });
+  };
 
   useEffect(() => {
     if (!isModeEnabled) {
@@ -459,23 +549,25 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
 
 
   const handleSpeak = () => {
-    if (!isPredictionReady()) return;
+    const textToSpeak = capturedSentence || prediction;
+    if (textToSpeak === "—" || !textToSpeak) return;
     
-    const utterance = new SpeechSynthesisUtterance(prediction);
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.lang = "en-US";
     window.speechSynthesis.speak(utterance);
     
     toast({
       title: "Speaking",
-      description: prediction,
+      description: textToSpeak,
     });
   };
 
   const handleCopy = async () => {
-    if (!isPredictionReady()) return;
+    const textToCopy = capturedSentence || prediction;
+    if (textToCopy === "—" || !textToCopy) return;
     
     try {
-      await navigator.clipboard.writeText(prediction);
+      await navigator.clipboard.writeText(textToCopy);
       toast({
         title: "Copied",
         description: "Text copied to clipboard",
@@ -489,7 +581,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     }
   };
 
-  const isPredictionReady = () => prediction !== "—";
+  const isPredictionReady = () => capturedSentence !== "" || prediction !== "—";
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -592,10 +684,75 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
                     Confidence: {(confidence * 100).toFixed(0)}%
                   </p>
                 )}
+                
+                {/* Hold Progress Indicator */}
+                {holdProgress > 0 && prediction !== "—" && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Hold for {((LETTER_HOLD_DURATION - (holdProgress * LETTER_HOLD_DURATION / 100)) / 1000).toFixed(1)}s to capture "{prediction}"
+                    </p>
+                    <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-pastel-green h-full transition-all duration-100 ease-linear"
+                        style={{ width: `${holdProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+            </Card>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-3 justify-center mt-6">
+            {/* Captured Sentence Display */}
+            {capturedSentence && (
+              <Card className="p-6 bg-pastel-green border-2 border-green-300">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-700 uppercase tracking-wide font-medium">
+                      📝 Captured Sentence
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleClearSentence}
+                      className="h-8 text-gray-700 hover:bg-green-200"
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-4 min-h-[60px] flex items-center">
+                    <p className="text-2xl md:text-3xl font-semibold text-gray-800 break-words">
+                      {capturedSentence}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddSpace}
+                      className="bg-white hover:bg-green-50"
+                    >
+                      <Space className="w-4 h-4 mr-1" />
+                      Add Space
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDeleteLast}
+                      disabled={!capturedSentence}
+                      className="bg-white hover:bg-green-50"
+                    >
+                      <Delete className="w-4 h-4 mr-1" />
+                      Delete Last
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Action Buttons */}
+            <Card className="p-6 bg-card">
+              <div className="flex flex-wrap gap-3 justify-center">
                 <Button
                   size="lg"
                   onClick={handleSpeak}
@@ -638,7 +795,11 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
               <li>• Keep your hand clearly visible in the camera frame</li>
               <li>• Position yourself 1-2 feet from the camera</li>
               <li>• Good lighting helps improve detection accuracy</li>
-              <li>• Hold each gesture steady for best results</li>
+              <li>• <strong>Hold each gesture for 3 seconds</strong> to capture the letter</li>
+              <li>• Watch the progress bar fill up as you hold the gesture</li>
+              <li>• To capture the same letter twice (e.g., "HELLO"), briefly remove your hand between captures</li>
+              <li>• Letters are added to your sentence automatically after 3 seconds</li>
+              <li>• Use Speak, Translate, or Copy buttons to work with your sentence</li>
             </ul>
           </Card>
         </div>
@@ -647,7 +808,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
       <TranslatorDialog
         open={showTranslator}
         onOpenChange={setShowTranslator}
-        text={prediction}
+        text={capturedSentence || prediction}
       />
       <HelpDialog open={showHelp} onOpenChange={setShowHelp} />
     </div>

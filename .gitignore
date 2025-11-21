@@ -38,3 +38,8 @@ env/
 *.tmp
 *.cache
 .cache/
+
+# Model training output (use training_setup/ for notebooks)
+asl_model_output/
+*.keras
+*.h5

@@ -108,9 +108,7 @@ A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, Space, T, U, V, W, X, Y
 
 ## Training Source
 
-Full training report and artifacts available in:
-- `asl_model_output/training_report.md`
-- `asl_model_output/best_model.keras` (original Keras model)
+Training notebooks and instructions available in the `training_setup/` directory. See `training_setup/README.md` for details on retraining the model.
 
 ## Privacy
 

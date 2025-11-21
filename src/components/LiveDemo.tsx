@@ -45,6 +45,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const preProcessCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const modelRef = useRef<tf.GraphModel | null>(null);
   const detectorRef = useRef<handPoseDetection.HandDetector | null>(null);
   const labelsRef = useRef<string[]>([]);
@@ -57,6 +58,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const [handsDetected, setHandsDetected] = useState(false);
   const [showTranslator, setShowTranslator] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showHandTracking, setShowHandTracking] = useState(true);
   const { toast } = useToast();
   
   // Sentence building state
@@ -275,6 +277,74 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     return { label, score: bestScore };
   }, [mode]);
 
+  // Draw hand tracking landmarks on overlay canvas
+  const drawHandLandmarks = useCallback((hands: handPoseDetection.Hand[]) => {
+    if (!overlayCanvasRef.current || !videoRef.current || !showHandTracking) {
+      return;
+    }
+
+    const canvas = overlayCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!hands.length) return;
+
+    // Draw each hand
+    hands.forEach((hand) => {
+      const keypoints = hand.keypoints;
+      if (!keypoints || keypoints.length !== 21) return;
+
+      // Draw connections between landmarks
+      const connections = [
+        // Thumb
+        [0, 1], [1, 2], [2, 3], [3, 4],
+        // Index finger
+        [0, 5], [5, 6], [6, 7], [7, 8],
+        // Middle finger
+        [0, 9], [9, 10], [10, 11], [11, 12],
+        // Ring finger
+        [0, 13], [13, 14], [14, 15], [15, 16],
+        // Pinky
+        [0, 17], [17, 18], [18, 19], [19, 20],
+        // Palm
+        [5, 9], [9, 13], [13, 17]
+      ];
+
+      // Draw lines
+      ctx.strokeStyle = '#00FF00';
+      ctx.lineWidth = 2;
+      connections.forEach(([start, end]) => {
+        const startPoint = keypoints[start];
+        const endPoint = keypoints[end];
+        if (startPoint && endPoint) {
+          ctx.beginPath();
+          ctx.moveTo(startPoint.x, startPoint.y);
+          ctx.lineTo(endPoint.x, endPoint.y);
+          ctx.stroke();
+        }
+      });
+
+      // Draw keypoints
+      keypoints.forEach((keypoint, index) => {
+        // Wrist is larger and different color
+        if (index === 0) {
+          ctx.fillStyle = '#FF0000';
+          ctx.beginPath();
+          ctx.arc(keypoint.x, keypoint.y, 6, 0, 2 * Math.PI);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = '#00FF00';
+          ctx.beginPath();
+          ctx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      });
+    });
+  }, [showHandTracking]);
+
   const computeCropBox = useCallback((hand: handPoseDetection.Hand, frameWidth: number, frameHeight: number): CropBox => {
     const points = hand.keypoints ?? [];
     if (!points.length) {
@@ -340,6 +410,9 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
         const hands = await detectorRef.current.estimateHands(videoRef.current, {
           flipHorizontal: false,
         });
+
+        // Draw hand tracking overlay
+        drawHandLandmarks(hands);
 
         if (!hands.length) {
           setPrediction("—");
@@ -418,7 +491,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     };
 
     detectFrame();
-  }, [computeCropBox, getTopPrediction, preprocessFrame, preprocessLandmarks, useLandmarks]);
+  }, [computeCropBox, getTopPrediction, preprocessFrame, preprocessLandmarks, useLandmarks, drawHandLandmarks]);
 
   // Sentence building functions - track how long a letter is held
   const updateLetterHold = useCallback((letter: string) => {
@@ -533,6 +606,31 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     };
   }, [mode, isModeEnabled, inputWidth, inputHeight, initCamera, loadModelAssets, loadHandDetector, stopCamera, stopDetection]);
 
+  // Setup overlay canvas dimensions when video is ready
+  useEffect(() => {
+    if (videoRef.current && overlayCanvasRef.current && isCameraReady) {
+      const video = videoRef.current;
+      const canvas = overlayCanvasRef.current;
+      
+      const updateCanvasSize = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      };
+      
+      // Set initial size
+      if (video.videoWidth > 0) {
+        updateCanvasSize();
+      }
+      
+      // Update on video metadata loaded
+      video.addEventListener('loadedmetadata', updateCanvasSize);
+      
+      return () => {
+        video.removeEventListener('loadedmetadata', updateCanvasSize);
+      };
+    }
+  }, [isCameraReady]);
+
   useEffect(() => {
     if (!isModeEnabled) {
       return;
@@ -636,6 +734,12 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
                   style={{ transform: "scaleX(-1)" }}
                   muted
                 />
+                {/* Hand tracking overlay canvas */}
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none scale-x-[-1]"
+                  style={{ transform: "scaleX(-1)" }}
+                />
                 {!isCameraReady && (
                   <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
                     <p className="text-lg text-muted-foreground">
@@ -654,11 +758,22 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
                   </div>
                 )}
                 {isCameraReady && isModelReady && isDetectorReady && (
-                  <div className={`absolute top-4 right-4 px-3 py-2 rounded-lg text-sm z-10 transition-colors ${
+                  <>
+                    <div className={`absolute top-4 right-4 px-3 py-2 rounded-lg text-sm z-10 transition-colors ${
                     handsDetected ? 'bg-pastel-green text-gray-800' : 'bg-muted text-muted-foreground'
                   }`}>
                     {handsDetected ? '✋ Hand Detected' : '👋 Show your hand'}
                   </div>
+                    {/* Hand tracking toggle */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowHandTracking(!showHandTracking)}
+                      className="absolute top-4 left-4 z-10 bg-background/80 backdrop-blur-sm"
+                    >
+                      {showHandTracking ? '👁️ Hide Tracking' : '👁️ Show Tracking'}
+                    </Button>
+                  </>
                 )}
                 {!isModeEnabled && (
                   <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
@@ -795,6 +910,8 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
               <li>• Keep your hand clearly visible in the camera frame</li>
               <li>• Position yourself 1-2 feet from the camera</li>
               <li>• Good lighting helps improve detection accuracy</li>
+              <li>• <strong>Green dots and lines show hand tracking in real-time</strong></li>
+              <li>• Use the "Show/Hide Tracking" button to toggle hand landmarks</li>
               <li>• <strong>Hold each gesture for 3 seconds</strong> to capture the letter</li>
               <li>• Watch the progress bar fill up as you hold the gesture</li>
               <li>• To capture the same letter twice (e.g., "HELLO"), briefly remove your hand between captures</li>

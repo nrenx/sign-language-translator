@@ -58,26 +58,42 @@ const TranslatorDialog = ({
 
     setIsTranslating(true);
     try {
+      // Prepare request body for LibreTranslate
+      const requestBody: any = {
+        q: text,
+        source: config.translation.defaultSourceLanguage,
+        target: targetLanguage,
+        format: "text",
+      };
+
+      // Only add API key if it's provided
+      if (config.translation.apiKey) {
+        requestBody.api_key = config.translation.apiKey;
+      }
+
       const response = await fetch(config.translation.apiEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          q: text,
-          source: config.translation.defaultSourceLanguage,
-          target: targetLanguage,
-          format: "text",
-          api_key: config.translation.apiKey,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error("Translation failed");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      setTranslatedText(data.translatedText || data.translation);
+      
+      // LibreTranslate returns translatedText field
+      const translation = data.translatedText || data.translation || "";
+      
+      if (!translation) {
+        throw new Error("No translation returned from API");
+      }
+      
+      setTranslatedText(translation);
       
       toast({
         title: "Translated",
@@ -85,9 +101,12 @@ const TranslatorDialog = ({
       });
     } catch (error) {
       console.error("Translation error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast({
         title: "Translation Failed",
-        description: "Please check your translation API configuration",
+        description: errorMessage.includes("CORS") || errorMessage.includes("Failed to fetch")
+          ? "Network error. Try using a self-hosted LibreTranslate instance."
+          : errorMessage,
         variant: "destructive",
       });
     } finally {

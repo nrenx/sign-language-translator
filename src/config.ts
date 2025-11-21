@@ -72,8 +72,10 @@ const SIGN_LANGUAGE_ALPHABET = [
 export const config: AppConfig = {
   translation: {
     enabled: true,
-    apiEndpoint: "https://libretranslate.com/translate",
-    apiKey: "",
+    // Using Argos Translate - free, no API key required, CORS-friendly
+    // Alternative: Get free API key from https://portal.libretranslate.com
+    apiEndpoint: "https://translate.argosopentech.com/translate",
+    apiKey: "", // No API key needed for Argos Translate
     defaultSourceLanguage: "en",
     defaultTargetLanguage: "es",
   },

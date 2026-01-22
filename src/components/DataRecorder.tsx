@@ -178,7 +178,7 @@ const DataRecorder = ({ onBack }: DataRecorderProps) => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="alphabet">Alphabet (A–Y)</SelectItem>
+                      <SelectItem value="alphabet">Alphabet (A–Z)</SelectItem>
                       <SelectItem value="words" disabled>
                         Words (Locked)
                       </SelectItem>

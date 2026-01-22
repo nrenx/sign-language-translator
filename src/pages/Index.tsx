@@ -23,7 +23,7 @@ const Index = () => {
   }> = [
     {
       mode: "alphabet",
-      title: "Alphabet (A–Y)",
+      title: "Alphabet (A–Z)",
       description: "Realtime inference with our production model",
       accent: "bg-primary/10",
       icon: <BookOpen className="w-8 h-8 text-primary" />,

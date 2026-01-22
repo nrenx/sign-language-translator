@@ -72,11 +72,11 @@ const SIGN_LANGUAGE_ALPHABET = [
 export const config: AppConfig = {
   translation: {
     enabled: true,
-    // Using Google Gemini 2.0 Flash Lite - Optimized for speed and efficiency
+    // Using Google Gemini 2.5 Flash Lite - Optimized for speed and efficiency
     // Free tier: Higher rate limits, faster responses
     // Get your API key from https://aistudio.google.com/app/apikey
-    apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent",
-    apiKey: "AIzaSyBu8PZKv2YCqEXa9u3asOYcS9hQgnt8pnk",
+    apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+    apiKey: "AIzaSyCSZ3k6FJ73aV9c_65_gnYCDezxLRij9Cc",
     defaultSourceLanguage: "en",
     defaultTargetLanguage: "hi", // Default to Hindi
   },

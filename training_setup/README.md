@@ -1,168 +1,95 @@
-# ASL Model Training Setup
+# ASL Model Training Guide
 
-This directory contains training notebooks and documentation for the ASL alphabet recognition model.
+## Overview
 
-## 📁 Contents
+- **Goal**: Train an ASL alphabet recognition model with 97-99% accuracy
+- **Method**: Hybrid CNN + Engineered Features (two-branch architecture)
+- **Output**: TensorFlow.js model for browser deployment
+- **Classes**: 28 (A-Z + Nothing + Space)
 
-- **`sign_language_colab.ipynb`** - Main training notebook (Google Colab)
-- **`sign_language_retrain.ipynb`** - Retraining/fine-tuning notebook
-- **`QUICK_START_COLAB.md`** - Quick start guide for Colab training
-- **`NOTEBOOK_COMPARISON.md`** - Comparison between different training approaches
+## Training Notebooks
 
-## 🎯 Current Model
+- `sign_language_improved.ipynb` — **Recommended** (hybrid model, best accuracy)
+- `sign_language_colab.ipynb` — Original MLP model
+- `sign_language_retrain.ipynb` — Simplified retraining version
 
-The production model was trained using the notebook in this directory:
+## Quick Start (Google Colab)
 
-- **Training Date**: November 21, 2025
-- **Model Type**: Landmark-based MLP (Multi-Layer Perceptron)
-- **Classes**: 28 (A-Z + Space)
-- **Validation Accuracy**: 98.81%
-- **Output Location**: `../asl_model_output/`
+- Open `sign_language_improved.ipynb` in [Google Colab](https://colab.research.google.com)
+- Enable GPU: Runtime → Change runtime type → GPU
+- Run all cells in order
+- Training takes ~25-30 minutes with GPU
+- Download `tfjs_model/` folder from Google Drive when done
 
-## 🚀 Training a New Model
+## Model Architecture
 
-### Prerequisites
+- **Branch 1 (CNN)**: Processes 63 landmarks (21 hand points × 3 coords)
+- **Branch 2 (Dense)**: Processes 121 engineered features
+- **Merge**: Both branches combine for final classification
+- **Output**: 28 class probabilities (softmax)
 
-- Google Colab account (free tier works)
-- Google Drive for storing outputs
+## Engineered Features (121 total)
+
+- Normalized landmarks (63) — wrist-centered coordinates
+- Distance features (24) — fingertip distances, palm distances
+- Angle features (19) — joint angles for each finger
+- Fingertip positions (10) — Y/Z coordinates
+- Palm orientation (3) — palm plane normal vector
+- Additional features (2) — hand scale, aspect ratio
+
+## Data Augmentation
+
+- Gaussian noise (2 levels)
+- Horizontal flip
+- Z-axis rotation (±5°, ±10°)
+- Scale variation (0.9x, 1.1x)
+- Result: ~6x training data
+
+## Training Settings
+
+- Epochs: 100 (with early stopping)
+- Batch size: 64
+- Learning rate: 0.001 with 5-epoch warmup
+- Early stopping patience: 15 epochs
+- Best model saved automatically
+
+## Expected Results
+
+- Test accuracy: 97-99%
+- Model size: ~2 MB
+- Inference time: <10ms per prediction
+
+## Output Files
+
+After training, these files are saved to Google Drive:
+
+- `tfjs_model/model.json` — model architecture
+- `tfjs_model/group1-shard1of1.bin` — model weights
+- `tfjs_model/labels.json` — class labels
+- `tfjs_model/model_config.json` — input dimensions
+- `best_model_improved.keras` — Keras checkpoint
+
+## Deployment
+
+- Copy all files from `tfjs_model/` to `public/models/alphabet_tfjs/`
+- The browser app loads the model automatically
+- Feature engineering runs in JavaScript to match training
+
+## Troubleshooting
+
+- **No GPU**: Enable in Colab runtime settings
+- **Out of memory**: Reduce batch size to 32
+- **Low accuracy**: Increase augmentation or epochs
+- **TFJS error**: Reinstall tensorflowjs (`pip install tensorflowjs>=4.20.0`)
+- **Training disconnected**: Use recovery cell to resume from checkpoint
+
+## Requirements
+
+- Google Colab (free tier works) or local GPU
 - Kaggle account for dataset access
-
-### Steps
-
-1. **Open Notebook in Colab**:
-   - Upload `sign_language_colab.ipynb` to Google Colab
-   - Or use the direct Colab link (if shared)
-
-2. **Configure Kaggle API**:
-   - Download your `kaggle.json` credentials
-   - Upload to Colab or mount Google Drive
-
-3. **Mount Google Drive**:
-   ```python
-   from google.colab import drive
-   drive.mount('/content/drive')
-   ```
-
-4. **Run Training Cells**:
-   - Follow instructions in `QUICK_START_COLAB.md`
-   - Training takes ~30-60 minutes on GPU
-
-5. **Download Outputs**:
-   - Model saved to Google Drive: `asl_model_output/`
-   - Includes: `best_model.keras`, `tfjs_model/`, `training_report.md`
-
-### Model Architecture
-
-The current model uses this architecture:
-
-```python
-Sequential([
-    Dense(256, activation='relu', kernel_regularizer=l2(0.001)),
-    BatchNormalization(),
-    Dropout(0.3),
-    Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
-    BatchNormalization(),
-    Dropout(0.2),
-    Dense(64, activation='relu'),
-    Dropout(0.1),
-    Dense(28, activation='softmax')  # 28 classes
-])
-```
-
-**Input**: 63 features (21 MediaPipe landmarks × 3 coords, wrist-centered)  
-**Output**: 28 class probabilities
-
-## 📊 Training Configuration
-
-Recommended hyperparameters:
-
-```python
-EPOCHS = 100
-BATCH_SIZE = 64
-LEARNING_RATE = 0.001
-OPTIMIZER = 'adam'
-EARLY_STOPPING_PATIENCE = 10
-REDUCE_LR_PATIENCE = 5
-```
-
-## 🔄 Retraining Process
-
-To improve the model or add new classes:
-
-1. **Collect New Data**:
-   - Use the app's Data Recorder feature
-   - Or download additional datasets from Kaggle
-
-2. **Update Notebook**:
-   - Modify class labels if adding new signs
-   - Adjust augmentation parameters
-   - Update output directory
-
-3. **Run Training**:
-   - Use `sign_language_retrain.ipynb` for fine-tuning
-   - Or start fresh with `sign_language_colab.ipynb`
-
-4. **Deploy Updated Model**:
-   - Copy `tfjs_model/` outputs to `../public/models/alphabet_tfjs/`
-   - Update `../src/config.ts` if class count changed
-   - Test in browser
-
-## 📈 Model Evaluation
-
-The training notebook automatically generates:
-
-- **Training Report**: `training_report.md`
-- **TensorBoard Logs**: `logs/` directory
-- **Training History Plot**: `training_history.png`
-- **Sample Predictions**: Console output during training
-
-### Viewing TensorBoard
-
-```python
-%load_ext tensorboard
-%tensorboard --logdir /content/drive/MyDrive/asl_model_output/logs
-```
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**GPU Not Available**:
-- Colab: Runtime → Change runtime type → GPU
-- Verify with: `tf.config.list_physical_devices('GPU')`
-
-**Out of Memory**:
-- Reduce `BATCH_SIZE` to 32 or 16
-- Reduce augmentation multiplier
-- Use smaller model architecture
-
-**Low Accuracy**:
-- Increase training data (augmentation)
-- Adjust learning rate (try 0.0001)
-- Increase epochs (if underfitting)
-- Reduce dropout (if underfitting)
-
-**MediaPipe Errors**:
-- Ensure images have visible hands
-- Check MediaPipe version compatibility
-- Verify image format (RGB, not RGBA)
-
-## 📚 References
-
-- **MediaPipe Hands**: https://google.github.io/mediapipe/solutions/hands
-- **TensorFlow.js**: https://www.tensorflow.org/js
-- **ASL Dataset**: Kaggle ASL Alphabet dataset
-
-## 📝 Notes
-
-- The model expects **wrist-centered** landmarks (subtract landmark[0])
-- Training uses **data augmentation** to improve generalization
-- **Early stopping** prevents overfitting
-- TFJS conversion uses **default quantization** (float32)
-
-For detailed training instructions, see `QUICK_START_COLAB.md`.
+- Google Drive for saving outputs
 
 ---
 
-**Last Updated**: November 21, 2025  
-**Current Model**: ASL Alphabet v1.0 (28 classes, 98.81% val accuracy)
+**Current Model**: Hybrid CNN (99.91% test accuracy)  
+**Last Updated**: January 2026

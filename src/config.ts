@@ -9,6 +9,7 @@ type ModelConfig = {
   labelsPath?: string;
   inputShape?: [number, number, number] | [number]; // Support both image and landmark input
   useLandmarks?: boolean; // Flag to indicate landmark-based model
+  useEngineeredFeatures?: boolean; // Flag for hybrid model with engineered features (119-dim)
   beginnerVocabulary?: string[];
 };
 
@@ -88,6 +89,7 @@ export const config: AppConfig = {
       vocabulary: SIGN_LANGUAGE_ALPHABET,
       inputShape: [63], // Landmark-based: 21 landmarks × 3 coordinates
       useLandmarks: true, // Use landmark extraction instead of image preprocessing
+      useEngineeredFeatures: true, // Hybrid model with dual inputs (landmarks + 121 features)
     },
     words: {
       enabled: false,

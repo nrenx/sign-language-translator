@@ -6,6 +6,7 @@ import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DatasetMode, config } from "@/config";
+import { extractEngineerFeatures, extractNormalizedLandmarks } from "@/lib/featureEngineering";
 import {
   ArrowLeft,
   Volume2,
@@ -70,6 +71,7 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
   const lastCaptureTimeRef = useRef<number>(0);
   const isModeEnabled = config.models[mode].enabled;
   const useLandmarks = config.models[mode].useLandmarks ?? false;
+  const useEngineeredFeatures = config.models[mode].useEngineeredFeatures ?? false;
   const inputShape = config.models[mode].inputShape ?? [28, 28, 1];
   const [inputWidth, inputHeight] = inputShape.length === 3 ? inputShape : [28, 28];
   const initCamera = useCallback(async () => {
@@ -134,7 +136,16 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
       if (config.models[mode].labelsPath) {
         try {
           const response = await fetch(config.models[mode].labelsPath);
-          labelsRef.current = await response.json();
+          const labelsData = await response.json();
+          
+          // Handle both array format ["A", "B", ...] and object format {"0": "A", "1": "B", ...}
+          if (Array.isArray(labelsData)) {
+            labelsRef.current = labelsData;
+          } else {
+            // Convert object to array (sorted by numeric keys)
+            const maxIndex = Math.max(...Object.keys(labelsData).map(Number));
+            labelsRef.current = Array.from({ length: maxIndex + 1 }, (_, i) => labelsData[i.toString()] || `Class ${i}`);
+          }
           console.log('Labels loaded:', labelsRef.current);
         } catch (labelsError) {
           console.warn("Unable to load labels file, falling back to config vocabulary", labelsError);
@@ -233,8 +244,8 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
     return tf.tensor4d(grayscale, [1, canvas.height, canvas.width, 1]);
   }, []);
 
-  // New landmark-based preprocessing
-  const preprocessLandmarks = useCallback((hand: handPoseDetection.Hand): tf.Tensor2D | null => {
+  // New landmark-based preprocessing with optional feature engineering
+  const preprocessLandmarks = useCallback((hand: handPoseDetection.Hand, videoWidth: number, videoHeight: number): { landmarkTensor: tf.Tensor2D; featureTensor: tf.Tensor2D } | null => {
     const keypoints = hand.keypoints;
     if (!keypoints || keypoints.length !== 21) {
       console.warn(`Invalid keypoints: expected 21, got ${keypoints?.length || 0}`);
@@ -248,19 +259,31 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
       return null;
     }
     
-    const landmarks = new Float32Array(63);
-
-    // Apply wrist-centering: subtract wrist from all landmarks
-    for (let i = 0; i < 21; i++) {
-      const kp = keypoints[i];
-      landmarks[i * 3] = kp.x - wrist.x;
-      landmarks[i * 3 + 1] = kp.y - wrist.y;
-      landmarks[i * 3 + 2] = (kp.z || 0) - (wrist.z || 0);
+    // For hybrid model: extract both landmarks and engineered features
+    // Pass video dimensions to normalize pixel coords to 0-1 range (matching Python training)
+    if (useEngineeredFeatures) {
+      const features = extractEngineerFeatures(keypoints, videoWidth, videoHeight);
+      if (!features) {
+        console.warn('Failed to extract engineered features');
+        return null;
+      }
+      
+      // Return both tensors for dual-input model
+      const landmarkTensor = tf.tensor2d(features.normalizedLandmarks, [1, 63]);
+      const featureTensor = tf.tensor2d(features.combined, [1, 121]);
+      return { landmarkTensor, featureTensor };
+    }
+    
+    // For simple model: use only normalized landmarks
+    const landmarks = extractNormalizedLandmarks(keypoints);
+    if (!landmarks) {
+      console.warn('Failed to extract landmarks');
+      return null;
     }
 
-    // Return as [1, 63] tensor
-    return tf.tensor2d(landmarks, [1, 63]);
-  }, []);
+    const landmarkTensor = tf.tensor2d(landmarks, [1, 63]);
+    return { landmarkTensor, featureTensor: landmarkTensor }; // Same tensor for simple model
+  }, [useEngineeredFeatures]);
 
   const getTopPrediction = useCallback((probabilities: Float32Array | Uint8Array | number[]) => {
     let bestIndex = 0;
@@ -403,7 +426,9 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
         return;
       }
 
-      let tensor: tf.Tensor | null = null;
+      let landmarkTensor: tf.Tensor | null = null;
+      let featureTensor: tf.Tensor | null = null;
+      let imageTensor: tf.Tensor | null = null;
       let logits: tf.Tensor | null = null;
 
       try {
@@ -428,18 +453,52 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
         const shouldLog = Math.random() < 0.033; // ~1 in 30 frames
         if (shouldLog) {
           console.log(`Detected ${hands.length} hand(s), landmarks: ${hands[0].keypoints?.length || 0}`);
+          // Log first few keypoints for debugging
+          const kp = hands[0].keypoints;
+          if (kp && kp.length > 0) {
+            console.log('Sample keypoints (0,4,8):', {
+              wrist: { x: kp[0].x.toFixed(3), y: kp[0].y.toFixed(3), z: kp[0].z?.toFixed(3) },
+              thumbTip: { x: kp[4].x.toFixed(3), y: kp[4].y.toFixed(3), z: kp[4].z?.toFixed(3) },
+              indexTip: { x: kp[8].x.toFixed(3), y: kp[8].y.toFixed(3), z: kp[8].z?.toFixed(3) },
+            });
+          }
         }
 
         // Use landmark-based or image-based preprocessing based on config
         if (useLandmarks) {
-          tensor = preprocessLandmarks(hands[0]);
-          if (!tensor) {
+          // Pass video dimensions to normalize pixel coordinates to 0-1 range
+          const videoWidth = videoRef.current.videoWidth;
+          const videoHeight = videoRef.current.videoHeight;
+          const tensors = preprocessLandmarks(hands[0], videoWidth, videoHeight);
+          if (!tensors) {
             console.warn('Failed to extract landmarks');
             animationRef.current = requestAnimationFrame(detectFrame);
             return;
           }
+          
+          landmarkTensor = tensors.landmarkTensor;
+          featureTensor = tensors.featureTensor;
+          
           if (shouldLog) {
-            console.log('Landmark tensor shape:', tensor.shape);
+            console.log('Landmark tensor shape:', landmarkTensor.shape);
+            console.log('Feature tensor shape:', featureTensor.shape);
+            // Log first few feature values
+            featureTensor.data().then(data => {
+              console.log('Feature sample (first 10):', Array.from(data.slice(0, 10)).map(v => v.toFixed(4)));
+              console.log('Feature sample (last 10):', Array.from(data.slice(-10)).map(v => v.toFixed(4)));
+            });
+          }
+          
+          // For hybrid model with dual inputs
+          if (useEngineeredFeatures) {
+            // Model expects named inputs: { landmark_input, feature_input }
+            logits = modelRef.current.predict({
+              landmark_input: landmarkTensor,
+              feature_input: featureTensor
+            }) as tf.Tensor;
+          } else {
+            // Simple model with single input
+            logits = modelRef.current.predict(landmarkTensor) as tf.Tensor;
           }
         } else {
           const cropBox = computeCropBox(
@@ -447,14 +506,14 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
             videoRef.current.videoWidth,
             videoRef.current.videoHeight,
           );
-          tensor = preprocessFrame(videoRef.current, preProcessCanvasRef.current!, cropBox);
-          if (!tensor) {
+          imageTensor = preprocessFrame(videoRef.current, preProcessCanvasRef.current!, cropBox);
+          if (!imageTensor) {
             animationRef.current = requestAnimationFrame(detectFrame);
             return;
           }
+          logits = modelRef.current.predict(imageTensor) as tf.Tensor;
         }
 
-        logits = modelRef.current.predict(tensor) as tf.Tensor;
         const probabilities = await logits.data();
         
         if (shouldLog) {
@@ -483,7 +542,9 @@ const LiveDemo = ({ mode, onBack, onOpenDataRecorder }: LiveDemoProps) => {
       } catch (error) {
         console.error("Inference error:", error);
       } finally {
-        tensor?.dispose();
+        landmarkTensor?.dispose();
+        featureTensor?.dispose();
+        imageTensor?.dispose();
         logits?.dispose();
       }
 

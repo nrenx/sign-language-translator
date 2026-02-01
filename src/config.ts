@@ -21,6 +21,9 @@ type AppConfig = {
     defaultSourceLanguage: string;
     defaultTargetLanguage: string;
   };
+  tts: {
+    sarvamApiKey: string;
+  };
   models: Record<DatasetMode, ModelConfig>;
   training: {
     enabled: boolean;
@@ -77,9 +80,15 @@ export const config: AppConfig = {
     // Free tier: Higher rate limits, faster responses
     // Get your API key from https://aistudio.google.com/app/apikey
     apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
-    apiKey: "AIzaSyCSZ3k6FJ73aV9c_65_gnYCDezxLRij9Cc",
+    apiKey: "AIzaSyBceOseM3dL-V0blKG8aX2WLB4cRAFPxD0",
     defaultSourceLanguage: "en",
     defaultTargetLanguage: "hi", // Default to Hindi
+  },
+  // Sarvam AI Text-to-Speech API for Indian regional languages
+  // Supports: Hindi, Telugu, Tamil, Bengali, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia
+  // Get your key from https://console.sarvam.ai
+  tts: {
+    sarvamApiKey: "sk_utx8owv3_YwJNX0mF4qhdBsrPQnNfeBDN",
   },
   models: {
     alphabet: {
